@@ -1,80 +1,74 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-interface FormField {
-  value: number | string
-  label: string
+type Field = { value: string | number; label: string }
+
+type FormData = {
+  price: Field
+  closingDate: Field
+  optionPeriod: Field
 }
 
-interface TrecForm {
-  price: FormField
-  closingDate: FormField
-  optionPeriod: FormField
-}
-
-const initialForm: TrecForm = {
+const initial: FormData = {
   price: { value: 500000, label: 'Sales Price' },
   closingDate: { value: '2025-12-21', label: 'Closing Date' },
   optionPeriod: { value: 10, label: 'Option Period (days)' }
 }
 
 export default function FormRenderer() {
-  const [formData, setFormData] = useState<TrecForm>(initialForm)
+  const [formData, setFormData] = useState<FormData>(initial)
 
   useEffect(() => {
-    const channel = supabase.channel('form-changes')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'forms' }, (payload) => {
-        setFormData(payload.new as TrecForm)
-      })
+    const channel = supabase
+      .channel('form-changes')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'forms' },
+        (payload) => setFormData(payload.new as FormData)
+      )
       .subscribe()
-
-    return () => { supabase.removeChannel(channel) }
+    return () => supabase.removeChannel(channel)
   }, [])
 
-  const updateField = (key: keyof TrecForm, value: number | string) => {
-    setFormData(prev => ({
-      ...prev,
-      [key]: { ...prev[key], value }
-    }))
-
-    supabase
-      .from('forms')
-      .update({ [key]: { ...formData[key], value } })
-      .eq('id', 'demo-trec')
+  const updateField = (key: keyof FormData, value: string | number) => {
+    setFormData(prev => ({ ...prev, [key]: { ...prev[key], value } }))
   }
 
   return (
-    <form className="space-y-6">
-      {Object.entries(formData).map(([key, field]) => (
-        <div key={key} className={`p-4 border-2 rounded-lg ${key === 'price' ? 'border-red-400 bg-red-50' : 'border-gray-300'}`}>
-          <label className="block text-sm font-semibold mb-2">{field.label}</label>
-          {key === 'price' && (
-            <input
-              type="number"
-              value={field.value as number}
-              onChange={(e) => updateField(key as keyof TrecForm, parseInt(e.target.value) || 0)}
-              className="w-full p-3 border rounded text-lg"
-            />
-          )}
-          {key === 'closingDate' && (
+    <form className="space-y-8 max-w-2xl">
+      {(Object.keys(formData) as (keyof FormData)[]).map(key => (
+        <div
+          key={key}
+          className={`p-6 border-4 rounded-xl transition-all ${
+            key === 'price' ? 'border-red-500 bg-red-50' : 'border-gray-300'
+          }`}
+        >
+          <label className="block text-lg font-semibold mb-3">
+            {formData[key].label}
+          </label>
+
+          {key === 'closingDate' ? (
             <input
               type="date"
-              value={field.value as string}
-              onChange={(e) => updateField(key as keyof TrecForm, e.target.value)}
-              className="w-full p-3 border rounded text-lg"
+              value={formData[key].value as string}
+              onChange={e => updateField(key, e.target.value)}
+              className="w-full p-4 text-xl border rounded-lg"
             />
-          )}
-          {key === 'optionPeriod' && (
+          ) : (
             <input
-              type="number"
-              value={field.value as number}
-              onChange={(e) => updateField(key as keyof TrecForm, parseInt(e.target.value) || 0)}
-              className="w-full p-3 border rounded text-lg"
+              type={key === 'optionPeriod' ? 'number' : 'text'}
+              value={formData[key].value}
+              onChange={e => updateField(key, e.target.value)}
+              className="w-full p-4 text-xl border rounded-lg"
             />
           )}
         </div>
       ))}
-      <button type="button" className="mt-6 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg text-lg">
+
+      <button
+        type="button"
+        className="w-full bg-green-600 hover:bg-green-700 text-white font-bold text-2xl py-6 rounded-xl"
+      >
         Send Counter
       </button>
     </form>
