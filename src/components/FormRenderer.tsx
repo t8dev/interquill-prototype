@@ -1,76 +1,90 @@
-import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 
-type Field = { value: string | number; label: string }
-
-type FormData = {
-  price: Field
-  closingDate: Field
-  optionPeriod: Field
+interface FormField {
+  value: number | string;
+  label: string;
 }
 
-const initial: FormData = {
+interface TrecForm {
+  price: FormField;
+  closingDate: FormField;
+  optionPeriod: FormField;
+}
+
+const initialForm: TrecForm = {
   price: { value: 500000, label: 'Sales Price' },
   closingDate: { value: '2025-12-21', label: 'Closing Date' },
   optionPeriod: { value: 10, label: 'Option Period (days)' }
-}
+};
 
 export default function FormRenderer() {
-  const [formData, setFormData] = useState<FormData>(initial)
+  const [formData, setFormData] = useState<TrecForm>(initialForm);
 
   useEffect(() => {
-    const channel = supabase
-      .channel('form-changes')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'forms' },
-        (payload) => setFormData(payload.new as FormData)
-      )
-      .subscribe()
-    return () => supabase.removeChannel(channel)
-  }, [])
+    // Wrap async subscribe in sync function
+    const setupSubscription = async () => {
+      const channel = supabase.channel('form-changes')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'forms' }, (payload) => {
+          setFormData(payload.new as TrecForm);
+        })
+        .subscribe();  // This returns Promise<"ok" | "timed out" | "error">
 
-  const updateField = (key: keyof FormData, value: string | number) => {
-    setFormData(prev => ({ ...prev, [key]: { ...prev[key], value } }))
-  }
+      // Wait for subscription to resolve (optional, for error handling)
+      await channel;
+    };
+
+    setupSubscription();
+
+    // Return sync cleanup
+    return () => {
+      supabase.removeChannel(supabase.channel('form-changes'));
+    };
+  }, []);
+
+  const updateField = (key: keyof TrecForm, value: number | string) => {
+    setFormData(prev => ({
+      ...prev,
+      [key]: { ...prev[key], value }
+    }));
+
+    // Mock Supabase update for prototype (replace with real later)
+    console.log('Updating field:', key, value);
+  };
 
   return (
-    <form className="space-y-8 max-w-2xl">
-      {(Object.keys(formData) as (keyof FormData)[]).map(key => (
-        <div
-          key={key}
-          className={`p-6 border-4 rounded-xl transition-all ${
-            key === 'price' ? 'border-red-500 bg-red-50' : 'border-gray-300'
-          }`}
-        >
-          <label className="block text-lg font-semibold mb-3">
-            {formData[key].label}
-          </label>
-
-          {key === 'closingDate' ? (
-            <input
-              type="date"
-              value={formData[key].value as string}
-              onChange={e => updateField(key, e.target.value)}
-              className="w-full p-4 text-xl border rounded-lg"
-            />
-          ) : (
-            <input
-              type={key === 'optionPeriod' ? 'number' : 'text'}
-              value={formData[key].value}
-              onChange={e => updateField(key, e.target.value)}
-              className="w-full p-4 text-xl border rounded-lg"
-            />
-          )}
-        </div>
-      ))}
-
-      <button
-        type="button"
-        className="w-full bg-green-600 hover:bg-green-700 text-white font-bold text-2xl py-6 rounded-xl"
-      >
-        Send Counter
-      </button>
+    <form className="space-y-4">
+      {Object.entries(formData).map(([key, field]) => {
+        const typedKey = key as keyof TrecForm;
+        return (
+          <div key={key} className={`p-3 border rounded ${key === 'price' ? 'border-red-300 bg-red-50' : ''}`}>
+            <label className="block text-sm font-medium mb-1">{field.label}</label>
+            {key === 'price' ? (
+              <input
+                type="number"
+                value={field.value}
+                onChange={(e) => updateField(typedKey, parseInt(e.target.value) || 0)}
+                className="w-full p-2 border rounded"
+              />
+            ) : key === 'closingDate' ? (
+              <input
+                type="date"
+                value={field.value as string}
+                onChange={(e) => updateField(typedKey, e.target.value)}
+                className="w-full p-2 border rounded"
+              />
+            ) : (
+              <input
+                type="number"
+                value={field.value}
+                onChange={(e) => updateField(typedKey, parseInt(e.target.value) || 0)}
+                className="w-full p-2 border rounded"
+              />
+            )}
+          </div>
+        );
+      })}
+      <button type="button" className="bg-green-600 text-white px-4 py-2 rounded">Send Counter</button>
     </form>
-  )
+  );
 }
